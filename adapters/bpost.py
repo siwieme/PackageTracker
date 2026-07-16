@@ -32,11 +32,17 @@ class BpostAdapter(BaseCourierAdapter):
     courier_name = "bpost"
     BASE_URL = "https://track.bpost.cloud/track/items"
 
-    async def fetch_tracking(self, tracking_number: str) -> PackageStatus:
+    async def fetch_tracking(
+        self,
+        tracking_number: str,
+        postal_code: Optional[str] = None,
+    ) -> PackageStatus:
         """Fetch and normalize bpost tracking data.
 
         Args:
             tracking_number: The bpost item identifier.
+            postal_code: Destination postal code. Required by bpost for
+                registered mail and certain parcel types.
 
         Returns:
             A normalized :class:`~core.models.PackageStatus`.
@@ -45,10 +51,13 @@ class BpostAdapter(BaseCourierAdapter):
             CourierError: If the item is unknown, has no events, or the
                 response cannot be parsed.
         """
+        params: dict = {"itemIdentifier": tracking_number, "lang": "en"}
+        if postal_code:
+            params["postalCode"] = postal_code
         try:
             response = await self.client.get(
                 self.BASE_URL,
-                params={"itemIdentifier": tracking_number, "lang": "en"},
+                params=params,
                 headers={"Accept": "application/json"},
             )
             response.raise_for_status()

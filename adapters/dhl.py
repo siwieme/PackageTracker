@@ -41,11 +41,17 @@ class DHLAdapter(BaseCourierAdapter):
         super().__init__(*args, **kwargs)
         self.api_key = api_key
 
-    async def fetch_tracking(self, tracking_number: str) -> PackageStatus:
+    async def fetch_tracking(
+        self,
+        tracking_number: str,
+        postal_code: Optional[str] = None,
+    ) -> PackageStatus:
         """Fetch and normalize DHL tracking data.
 
         Args:
             tracking_number: The DHL tracking number.
+            postal_code: Optional recipient postal code, forwarded to the DHL
+                API when provided.
 
         Returns:
             A normalized :class:`~core.models.PackageStatus`.
@@ -56,10 +62,13 @@ class DHLAdapter(BaseCourierAdapter):
         headers = {"Accept": "application/json"}
         if self.api_key:
             headers["DHL-API-Key"] = self.api_key
+        params: dict = {"trackingNumber": tracking_number}
+        if postal_code:
+            params["postalCode"] = postal_code
         try:
             response = await self.client.get(
                 self.BASE_URL,
-                params={"trackingNumber": tracking_number},
+                params=params,
                 headers=headers,
             )
             response.raise_for_status()

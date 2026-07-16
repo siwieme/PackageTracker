@@ -76,11 +76,18 @@ class BaseCourierAdapter(ABC):
         return self._client
 
     @abstractmethod
-    async def fetch_tracking(self, tracking_number: str) -> PackageStatus:
+    async def fetch_tracking(
+        self,
+        tracking_number: str,
+        postal_code: Optional[str] = None,
+    ) -> PackageStatus:
         """Fetch and normalize tracking information for a parcel.
 
         Args:
             tracking_number: The courier tracking number to look up.
+            postal_code: Optional destination postal code. Required by some
+                couriers (e.g. bpost registered mail) to authenticate the
+                lookup. Ignored when not needed.
 
         Returns:
             A normalized :class:`~core.models.PackageStatus`.

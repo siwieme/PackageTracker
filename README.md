@@ -19,6 +19,7 @@ A lightweight, modular Python API for tracking parcels across multiple couriers.
 - **Python 3.11+**
 - [`httpx`](https://www.python-httpx.org/) — async HTTP
 - [`pydantic`](https://docs.pydantic.dev/) — data validation and serialization
+- [`customtkinter`](https://github.com/TomSchimansky/CustomTkinter) — cross-platform desktop GUI
 - [`pytest`](https://pytest.org/) + [`respx`](https://lundberg.github.io/respx/) — testing with mocked HTTP
 
 ## Project structure
@@ -39,6 +40,7 @@ PackageTracker/
 │   ├── test_dhl.py
 │   └── test_router.py
 ├── main.py             # CLI entry point
+├── ui.py               # Desktop GUI entry point
 ├── requirements.txt
 ├── requirements-dev.txt
 └── Dockerfile
@@ -54,13 +56,28 @@ pip install -r requirements-dev.txt   # includes test deps
 
 ## Usage
 
+### Desktop UI
+
+```bash
+python ui.py
+```
+
+A cross-platform window opens (Windows / Linux / macOS). Enter a tracking number and optionally a postal code, then click **Opzoeken**. Results appear in a scrollable list with colour-coded statuses. Use the toggle button to switch between dark and light mode.
+
 ### CLI
 
 ```bash
-python -m main <tracking_number> [<tracking_number> ...]
+# Basic lookup — courier detected automatically
+python -m main 323212345678901234567890
+
+# With postal code (required by bpost for registered mail)
+python -m main 323212345678901234567890 --postal-code 9000
+
+# Multiple parcels at once
+python -m main 323212345678901234567890 3SABC123456789 -p 1000
 ```
 
-The courier is detected automatically from the tracking number format. Output is newline-separated JSON per parcel:
+Output is newline-separated JSON per parcel:
 
 ```json
 {
@@ -81,24 +98,23 @@ The courier is detected automatically from the tracking number format. Output is
 
 ```python
 import asyncio
-from core.router import CourierRouter
+from main import track
 
-async def main():
-    router = CourierRouter()
-    async with router.get_adapter("323212345678901234567890") as adapter:
-        status = await adapter.fetch_tracking("323212345678901234567890")
-        print(status.model_dump_json(indent=2))
+# Without postal code
+status = asyncio.run(track("323212345678901234567890"))
 
-asyncio.run(main())
+# With postal code
+status = asyncio.run(track("323212345678901234567890", postal_code="9000"))
+print(status.model_dump_json(indent=2))
 ```
 
-For DHL, pass your API key:
+For DHL with an API key:
 
 ```python
 from adapters.dhl import DHLAdapter
 
 async with DHLAdapter(api_key="your-key") as adapter:
-    status = await adapter.fetch_tracking("JVGL0123456789")
+    status = await adapter.fetch_tracking("JVGL0123456789", postal_code="1000")
 ```
 
 ## Data model

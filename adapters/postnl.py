@@ -32,11 +32,17 @@ class PostNLAdapter(BaseCourierAdapter):
     courier_name = "postnl"
     BASE_URL = "https://jouw.postnl.be/track-and-trace/api/trackAndTrace"
 
-    async def fetch_tracking(self, tracking_number: str) -> PackageStatus:
+    async def fetch_tracking(
+        self,
+        tracking_number: str,
+        postal_code: Optional[str] = None,
+    ) -> PackageStatus:
         """Fetch and normalize PostNL tracking data.
 
         Args:
             tracking_number: The PostNL barcode.
+            postal_code: Optional destination postal code, forwarded to the
+                PostNL API when provided.
 
         Returns:
             A normalized :class:`~core.models.PackageStatus`.
@@ -44,10 +50,13 @@ class PostNLAdapter(BaseCourierAdapter):
         Raises:
             CourierError: If the request fails or the payload cannot be parsed.
         """
+        params: dict = {"language": "en"}
+        if postal_code:
+            params["postalCode"] = postal_code
         try:
             response = await self.client.get(
                 f"{self.BASE_URL}/{tracking_number}",
-                params={"language": "en"},
+                params=params,
                 headers={"Accept": "application/json"},
             )
             response.raise_for_status()
