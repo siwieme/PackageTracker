@@ -1,5 +1,7 @@
 # PackageTracker
 
+[![CI](https://github.com/siwieme/PackageTracker/actions/workflows/ci.yml/badge.svg)](https://github.com/siwieme/PackageTracker/actions/workflows/ci.yml)
+
 A lightweight, modular Python API for tracking parcels across multiple couriers. Raw courier responses are normalized into a single strict data model, with specific facility names (e.g. "LOKEREN X", "AMSTERDAM DC") extracted and preserved.
 
 ## Supported couriers
