@@ -5,6 +5,13 @@ Usage:
 
 Detects the courier for each tracking number, fetches its status, and prints
 the normalized :class:`~core.models.PackageStatus` as JSON.
+
+API keys are read from environment variables — never pass them as CLI arguments:
+    DHL_API_KEY   — DHL unified tracking API key (developer.dhl.com)
+
+The easiest way to set these locally is to copy .env.example to .env and fill
+in your values. Load them before running:
+    export $(cat .env | xargs) && python -m main <number>
 """
 
 from __future__ import annotations

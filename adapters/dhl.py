@@ -7,6 +7,7 @@ as ``addressLocality`` and, for facilities, ``servicePoint``/``name``.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any, Mapping, Optional
 
@@ -33,13 +34,18 @@ class DHLAdapter(BaseCourierAdapter):
     def __init__(self, *args: Any, api_key: Optional[str] = None, **kwargs: Any) -> None:
         """Initialize the DHL adapter.
 
+        The API key is resolved in this order:
+        1. The ``api_key`` argument (explicit call-site value).
+        2. The ``DHL_API_KEY`` environment variable (e.g. set in ``.env``).
+
         Args:
-            api_key: Optional DHL API key sent as the ``DHL-API-Key`` header.
+            api_key: DHL API key sent as the ``DHL-API-Key`` header. When
+                omitted, the ``DHL_API_KEY`` environment variable is used.
             *args: Forwarded to :class:`~adapters.base.BaseCourierAdapter`.
             **kwargs: Forwarded to :class:`~adapters.base.BaseCourierAdapter`.
         """
         super().__init__(*args, **kwargs)
-        self.api_key = api_key
+        self.api_key = api_key or os.environ.get("DHL_API_KEY")
 
     async def fetch_tracking(
         self,
