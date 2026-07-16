@@ -1,9 +1,15 @@
 """Bpost courier adapter.
 
-Parses the bpost tracking payload into the uniform data model, with particular
-care taken to extract the explicit facility/depot name (e.g. "LOKEREN X"),
-which bpost exposes inconsistently under keys such as ``name``,
-``locationName`` or ``activityLocation`` depending on the event and endpoint.
+Parses the real bpost tracking payload into the uniform data model.
+
+Key observations from the live API:
+- A postal code is required for most parcel types; without it the API returns
+  ``{"error": "NO_DATA_FOUND"}`` rather than an HTTP error.
+- Events contain no explicit status-code field. Descriptions are nested in a
+  multilingual ``key`` dict: ``event["key"]["EN"]["description"]``.
+- Delivery state lives on the item as ``shipmentDeliveryStatus`` (bool).
+- Facility names are under ``event["location"]["locationName"]``.
+- Timestamps use ``date`` ("YYYY-MM-DD") + ``time`` ("HH:MM") — no seconds.
 """
 
 from __future__ import annotations
@@ -12,13 +18,13 @@ from datetime import datetime
 from typing import Any, Mapping, Optional
 
 from adapters.base import BaseCourierAdapter, CourierError
-from core.models import PackageStatus, TrackingEvent
+from core.models import PackageStatus, StatusCode, TrackingEvent
 
-# Candidate keys under which bpost exposes a human-readable facility name.
-_LOCATION_KEYS = ("name", "locationName", "activityLocation", "municipality", "label")
+# Priority order for picking a language from a multilingual key dict.
+_LANG_ORDER = ("en", "EN", "nl", "NL", "fr", "FR", "de", "DE")
 
-# Preferred language order when bpost returns multilingual description objects.
-_LANG_ORDER = ("en", "nl", "fr", "de")
+# Keys checked in the nested location object.
+_LOCATION_KEYS = ("locationName", "name", "activityLocation", "municipality", "label")
 
 
 class BpostAdapter(BaseCourierAdapter):
@@ -41,15 +47,15 @@ class BpostAdapter(BaseCourierAdapter):
 
         Args:
             tracking_number: The bpost item identifier.
-            postal_code: Destination postal code. Required by bpost for
-                registered mail and certain parcel types.
+            postal_code: Destination postal code. Required by bpost for most
+                parcel types. Without it the API returns NO_DATA_FOUND.
 
         Returns:
             A normalized :class:`~core.models.PackageStatus`.
 
         Raises:
-            CourierError: If the item is unknown, has no events, or the
-                response cannot be parsed.
+            CourierError: If the item is unknown, postal code is missing, or
+                the response cannot be parsed.
         """
         params: dict = {"itemIdentifier": tracking_number, "lang": "en"}
         if postal_code:
@@ -62,7 +68,7 @@ class BpostAdapter(BaseCourierAdapter):
             )
             response.raise_for_status()
             payload = response.json()
-        except Exception as exc:  # network, HTTP status, or JSON decode failure
+        except Exception as exc:
             raise CourierError(
                 f"bpost lookup failed for {tracking_number}: {exc}"
             ) from exc
@@ -82,15 +88,23 @@ class BpostAdapter(BaseCourierAdapter):
             A normalized :class:`~core.models.PackageStatus`.
 
         Raises:
-            CourierError: If no known item or no events are present.
+            CourierError: If the payload signals an error or has no events.
         """
+        if "error" in payload:
+            code = payload["error"]
+            if code == "NO_DATA_FOUND":
+                raise CourierError(
+                    f"bpost: parcel not found for '{tracking_number}'. "
+                    "For most parcels a postal code is required — "
+                    "add --postal-code <postcode>."
+                )
+            raise CourierError(f"bpost error: {code}")
+
         items = payload.get("items") or []
         if not items:
             raise CourierError(f"bpost returned no items for {tracking_number}")
 
         item = items[0]
-        if item.get("known") is False:
-            raise CourierError(f"bpost does not know item {tracking_number}")
 
         raw_events = item.get("events") or []
         events = [self._parse_event(ev) for ev in raw_events]
@@ -101,9 +115,11 @@ class BpostAdapter(BaseCourierAdapter):
         events.sort(key=lambda e: e.timestamp)
         latest = events[-1]
 
-        # Prefer the courier's own top-level state, fall back to the latest event.
-        state = (item.get("state") or "").upper()
-        is_delivered = "DELIVER" in state or latest.status_code.value == "DELIVERED"
+        # shipmentDeliveryStatus is the reliable delivered flag in real payloads.
+        is_delivered = bool(item.get("shipmentDeliveryStatus"))
+        if not is_delivered:
+            active = (item.get("activeStep") or {}).get("knownProcessStep", "")
+            is_delivered = "DELIVER" in str(active).upper()
 
         return PackageStatus(
             tracking_number=tracking_number,
@@ -116,26 +132,32 @@ class BpostAdapter(BaseCourierAdapter):
     def _parse_event(self, ev: Mapping[str, Any]) -> Optional[TrackingEvent]:
         """Convert a single bpost event into a :class:`TrackingEvent`.
 
-        Robust to missing fields: an event without a resolvable timestamp is
-        skipped (returns ``None``); a missing location gracefully defaults to
-        ``None`` rather than halting parsing.
+        Events without a resolvable timestamp are skipped (returns ``None``).
+        Missing locations default to ``None``.
 
         Args:
             ev: A single raw event mapping from the bpost payload.
 
         Returns:
-            The parsed :class:`TrackingEvent`, or ``None`` if it lacks a usable
-            timestamp.
+            The parsed :class:`TrackingEvent`, or ``None`` if it lacks a
+            usable timestamp.
         """
         timestamp = self._parse_timestamp(ev)
         if timestamp is None:
             return None
 
-        key = ev.get("key") or ev.get("code") or ""
+        description = self._parse_description(ev)
+
+        # The ``irregularity`` flag is the only explicit exception signal.
+        if ev.get("irregularity"):
+            status_code = StatusCode.EXCEPTION
+        else:
+            status_code = self._normalize_status(description)
+
         return TrackingEvent(
             timestamp=timestamp,
-            status_code=self._normalize_status(key),
-            description=self._parse_description(ev),
+            status_code=status_code,
+            description=description,
             location=self._parse_location(ev),
         )
 
@@ -143,8 +165,9 @@ class BpostAdapter(BaseCourierAdapter):
     def _parse_timestamp(ev: Mapping[str, Any]) -> Optional[datetime]:
         """Extract a datetime from a bpost event.
 
-        Accepts either a combined ISO ``datetime`` field, or separate
-        ``date`` and ``time`` fields.
+        The real API provides ``date`` ("YYYY-MM-DD") and ``time`` ("HH:MM")
+        as separate fields. A combined ISO ``datetime``/``timestamp`` field is
+        also accepted for forward compatibility.
 
         Args:
             ev: A raw event mapping.
@@ -157,12 +180,16 @@ class BpostAdapter(BaseCourierAdapter):
             try:
                 return datetime.fromisoformat(str(combined).replace("Z", "+00:00"))
             except ValueError:
-                return None
+                pass
 
         date = ev.get("date")
         if not date:
             return None
         time = ev.get("time") or "00:00:00"
+        # Real API returns "HH:MM" without seconds; fromisoformat on Python <3.11
+        # requires seconds, so we pad explicitly.
+        if len(time) == 5:
+            time = time + ":00"
         try:
             return datetime.fromisoformat(f"{date}T{time}")
         except ValueError:
@@ -170,39 +197,48 @@ class BpostAdapter(BaseCourierAdapter):
 
     @staticmethod
     def _parse_description(ev: Mapping[str, Any]) -> str:
-        """Extract a human-readable description, preferring English.
+        """Extract a human-readable description from a bpost event.
+
+        The real bpost API stores descriptions inside the multilingual ``key``
+        dict as ``key[LANG]["description"]``. A plain string ``key`` or a
+        top-level ``description`` field are accepted as fallbacks.
 
         Args:
             ev: A raw event mapping.
 
         Returns:
-            The original courier description string (may be empty).
+            The English (or best available) description string.
         """
-        desc = ev.get("description")
-        if isinstance(desc, Mapping):
+        key = ev.get("key")
+        if isinstance(key, Mapping):
+            # Multilingual dict: try each language in preference order.
             for lang in _LANG_ORDER:
-                if desc.get(lang):
-                    return str(desc[lang])
-            # Fall back to any available translation.
-            for value in desc.values():
-                if value:
-                    return str(value)
-            return ""
-        return str(desc) if desc else ""
+                lang_data = key.get(lang)
+                if isinstance(lang_data, Mapping):
+                    desc = lang_data.get("description")
+                    if desc:
+                        return str(desc)
+            # Last resort: any language that has a description.
+            for lang_data in key.values():
+                if isinstance(lang_data, Mapping):
+                    desc = lang_data.get("description")
+                    if desc:
+                        return str(desc)
+        if isinstance(key, str) and key:
+            return key
+        return str(ev.get("description") or "")
 
     @classmethod
     def _parse_location(cls, ev: Mapping[str, Any]) -> Optional[str]:
-        """Extract the explicit facility/depot name from a bpost event.
+        """Extract the facility name from a bpost event.
 
-        Checks a nested ``location`` object first (the common case), then the
-        event root, across the several keys bpost is known to use. Missing
-        locations gracefully default to ``None``.
+        Checks the nested ``location`` object first, then the event root.
 
         Args:
             ev: A raw event mapping.
 
         Returns:
-            The facility name (e.g. "LOKEREN X"), or ``None``.
+            The facility name (e.g. "LOKEREN MAIL"), or ``None``.
         """
         location = ev.get("location")
         if isinstance(location, str) and location:
@@ -211,6 +247,5 @@ class BpostAdapter(BaseCourierAdapter):
             name = cls._first_present(location, _LOCATION_KEYS)
             if name:
                 return str(name)
-        # Some payloads flatten the location onto the event root.
         name = cls._first_present(ev, _LOCATION_KEYS)
         return str(name) if name else None
