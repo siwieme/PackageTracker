@@ -19,6 +19,7 @@ A lightweight, modular Python API for tracking parcels across multiple couriers.
 - **Python 3.11+**
 - [`httpx`](https://www.python-httpx.org/) — async HTTP
 - [`pydantic`](https://docs.pydantic.dev/) — data validation and serialization
+- [`fastapi`](https://fastapi.tiangolo.com/) + [`uvicorn`](https://www.uvicorn.org/) — web server for the browser UI
 - [`customtkinter`](https://github.com/TomSchimansky/CustomTkinter) — cross-platform desktop GUI
 - [`pytest`](https://pytest.org/) + [`respx`](https://lundberg.github.io/respx/) — testing with mocked HTTP
 
@@ -39,8 +40,11 @@ PackageTracker/
 │   ├── test_postnl.py
 │   ├── test_dhl.py
 │   └── test_router.py
-├── main.py             # CLI entry point
+├── main.py             # CLI entry point / library API
+├── server.py           # FastAPI web server (browser UI)
 ├── ui.py               # Desktop GUI entry point
+├── templates/
+│   └── index.html      # Single-file SPA (HTML + CSS + JS)
 ├── requirements.txt
 ├── requirements-dev.txt
 └── Dockerfile
@@ -55,6 +59,28 @@ pip install -r requirements-dev.txt   # includes test deps
 ```
 
 ## Usage
+
+### Browser UI
+
+```bash
+python server.py
+```
+
+Opens at **http://127.0.0.1:8000**. Enter a tracking number and optionally a postal code, then click **Zoeken**. Results appear as a hero status card with a full event timeline. Supports light/dark mode (follows system preference, with a manual override).
+
+For development with auto-reload:
+
+```bash
+uvicorn server:app --reload
+```
+
+The REST endpoint is also available directly:
+
+```
+GET /api/track?tracking_number=323204736100000008192030&postal_code=9160
+```
+
+Interactive API docs are served at `/api/docs`.
 
 ### Desktop UI
 
