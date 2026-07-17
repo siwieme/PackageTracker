@@ -484,6 +484,32 @@
       font-weight: 600;
     }
 
+    /* ── Language switcher ───────────────────────────────────────── */
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .lang-btns {
+      display: flex;
+      gap: 2px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px;
+    }
+    .lang-btn {
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      transition: background .15s, color .15s;
+      letter-spacing: .3px;
+    }
+    .lang-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+    .lang-btn:hover:not(.active) { color: var(--text); }
+
     /* ── Responsive ──────────────────────────────────────────────── */
     @media (max-width: 480px) {
       .row { flex-direction: column; gap: 14px; }
@@ -498,7 +524,14 @@
         <span class="logo-icon">📬</span>
         <span>PackageTracker</span>
       </div>
-      <button class="theme-btn" id="themeBtn" title="Thema wisselen">🌙</button>
+      <div class="header-actions">
+        <div class="lang-btns" id="langBtns">
+          <button class="lang-btn active" data-lang="nl">NL</button>
+          <button class="lang-btn" data-lang="fr">FR</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button class="theme-btn" id="themeBtn">🌙</button>
+      </div>
     </div>
   </header>
 
@@ -506,7 +539,7 @@
     <!-- ── Search ───────────────────────────────────────────────── -->
     <div class="card search-card">
       <div class="field">
-        <label>Trackingnummer</label>
+        <label id="labelTracking">Trackingnummer</label>
         <div class="input-wrap">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -520,9 +553,9 @@
         </div>
       </div>
       <div class="field">
-        <label>Vervoerder <span>(optioneel)</span></label>
+        <label id="labelCourier">Vervoerder <span id="labelCourierOpt">(optioneel)</span></label>
         <div class="courier-picker" id="courierPicker">
-          <button class="courier-opt selected" data-courier="">🔍 Auto-detect</button>
+          <button class="courier-opt selected" data-courier="" id="autoDetectBtn">🔍 Auto-detect</button>
           <button class="courier-opt" data-courier="bpost">📮 bpost</button>
           <button class="courier-opt" data-courier="postnl">📦 PostNL</button>
           <button class="courier-opt" data-courier="dhl">📫 DHL</button>
@@ -530,7 +563,7 @@
       </div>
       <div class="row">
         <div class="field">
-          <label>Postcode <span>(optioneel)</span></label>
+          <label id="labelPostal">Postcode <span id="labelPostalOpt">(optioneel)</span></label>
           <div class="input-wrap">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round"
@@ -544,7 +577,7 @@
           </div>
         </div>
         <button class="btn-track" id="trackBtn">
-          Zoeken
+          <span id="trackBtnLabel">Zoeken</span>
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5-5 5M6 12h12"/>
           </svg>
@@ -556,18 +589,79 @@
     <div id="results">
       <div class="empty-state">
         <div class="empty-icon">📦</div>
-        <div class="empty-title">Geen pakket geselecteerd</div>
-        <div class="empty-sub">Voer een trackingnummer in om de status op te zoeken.</div>
+        <div class="empty-title" id="emptyTitle">Geen pakket geselecteerd</div>
+        <div class="empty-sub" id="emptySub">Voer een trackingnummer in om de status op te zoeken.</div>
       </div>
     </div>
   </div>
 
   <script>
+    // ── Translations ─────────────────────────────────────────────
+    const LANGS = {
+      nl: {
+        trackingLabel:  "Trackingnummer",
+        courierLabel:   "Vervoerder",
+        postalLabel:    "Postcode",
+        optional:       "(optioneel)",
+        autoDetect:     "🔍 Auto-detect",
+        searchBtn:      "Zoeken",
+        loading:        "Bezig…",
+        trackingPh:     "bijv. 323204736100000008192030",
+        postalPh:       "bijv. 9160",
+        emptyTitle:     "Geen pakket geselecteerd",
+        emptySub:       "Voer een trackingnummer in om de status op te zoeken.",
+        errorTitle:     "Opzoeken mislukt",
+        postalTip:      "<strong>Tip:</strong> Voeg een postcode toe voor dit pakkettype.",
+        serverErr:      "Kon de server niet bereiken. Is de server actief?",
+        history:        n => `Geschiedenis — ${n} event${n !== 1 ? "s" : ""}`,
+        status: { DELIVERED: "Afgeleverd", TRANSIT: "Onderweg", EXCEPTION: "Probleem" },
+        locale: "nl-BE",
+      },
+      fr: {
+        trackingLabel:  "Numéro de suivi",
+        courierLabel:   "Transporteur",
+        postalLabel:    "Code postal",
+        optional:       "(optionnel)",
+        autoDetect:     "🔍 Auto-détect",
+        searchBtn:      "Chercher",
+        loading:        "Chargement…",
+        trackingPh:     "ex. 323204736100000008192030",
+        postalPh:       "ex. 9160",
+        emptyTitle:     "Aucun colis sélectionné",
+        emptySub:       "Entrez un numéro de suivi pour consulter le statut.",
+        errorTitle:     "Échec de la recherche",
+        postalTip:      "<strong>Conseil :</strong> Ajoutez un code postal pour ce type de colis.",
+        serverErr:      "Impossible de joindre le serveur. Est-il en cours d'exécution ?",
+        history:        n => `Historique — ${n} événement${n !== 1 ? "s" : ""}`,
+        status: { DELIVERED: "Livré", TRANSIT: "En transit", EXCEPTION: "Problème" },
+        locale: "fr-BE",
+      },
+      en: {
+        trackingLabel:  "Tracking number",
+        courierLabel:   "Carrier",
+        postalLabel:    "Postal code",
+        optional:       "(optional)",
+        autoDetect:     "🔍 Auto-detect",
+        searchBtn:      "Search",
+        loading:        "Loading…",
+        trackingPh:     "e.g. 323204736100000008192030",
+        postalPh:       "e.g. 9160",
+        emptyTitle:     "No parcel selected",
+        emptySub:       "Enter a tracking number to look up the status.",
+        errorTitle:     "Lookup failed",
+        postalTip:      "<strong>Tip:</strong> Add a postal code for this parcel type.",
+        serverErr:      "Could not reach the server. Is it running?",
+        history:        n => `History — ${n} event${n !== 1 ? "s" : ""}`,
+        status: { DELIVERED: "Delivered", TRANSIT: "In transit", EXCEPTION: "Exception" },
+        locale: "en-GB",
+      },
+    };
+
     // ── Constants ────────────────────────────────────────────────
     const STATUS_META = {
-      DELIVERED: { label: "Afgeleverd", color: "#34C759", icon: "✓" },
-      TRANSIT:   { label: "Onderweg",   color: "#4F8EF7", icon: "→" },
-      EXCEPTION: { label: "Probleem",   color: "#FF3B30", icon: "✕" },
+      DELIVERED: { color: "#34C759", icon: "✓" },
+      TRANSIT:   { color: "#4F8EF7", icon: "→" },
+      EXCEPTION: { color: "#FF3B30", icon: "✕" },
     };
     const COURIER_META = {
       bpost:  { name: "bpost",  icon: "📮", color: "#E3051B" },
@@ -575,11 +669,60 @@
       dhl:    { name: "DHL",    icon: "📫", color: "#D40511" },
     };
 
+    // ── Language ─────────────────────────────────────────────────
+    let lang = localStorage.getItem("lang") || "nl";
+    const langBtns = document.getElementById("langBtns");
+
+    langBtns.addEventListener("click", e => {
+      const btn = e.target.closest(".lang-btn");
+      if (!btn) return;
+      applyLang(btn.dataset.lang);
+    });
+
+    function applyLang(l) {
+      if (!LANGS[l]) return;
+      lang = l;
+      localStorage.setItem("lang", l);
+      const L = LANGS[l];
+
+      // Header buttons
+      langBtns.querySelectorAll(".lang-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.lang === l);
+      });
+
+      // Form labels
+      document.getElementById("labelTracking").firstChild.textContent = L.trackingLabel;
+      document.getElementById("labelCourier").firstChild.textContent  = L.courierLabel + " ";
+      document.getElementById("labelCourierOpt").textContent          = L.optional;
+      document.getElementById("labelPostal").firstChild.textContent   = L.postalLabel + " ";
+      document.getElementById("labelPostalOpt").textContent           = L.optional;
+
+      // Inputs
+      document.getElementById("numberInput").placeholder = L.trackingPh;
+      document.getElementById("postalInput").placeholder = L.postalPh;
+
+      // Auto-detect button
+      document.getElementById("autoDetectBtn").textContent = L.autoDetect;
+
+      // Track button (only when not loading)
+      const _btn = document.getElementById("trackBtn");
+      if (_btn && !_btn.disabled) {
+        const _lbl = document.getElementById("trackBtnLabel");
+        if (_lbl) _lbl.textContent = L.searchBtn;
+      }
+
+      // Empty state
+      document.getElementById("emptyTitle").textContent = L.emptyTitle;
+      document.getElementById("emptySub").textContent   = L.emptySub;
+    }
+
+    applyLang(lang);
+
     // ── Theme ────────────────────────────────────────────────────
     const root  = document.documentElement;
     const thBtn = document.getElementById("themeBtn");
-    const saved = localStorage.getItem("theme");
-    if (saved) applyTheme(saved);
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme) applyTheme(savedTheme);
 
     thBtn.addEventListener("click", () => {
       const isDark = root.getAttribute("data-theme") === "dark"
@@ -629,7 +772,7 @@
         if (data.error) renderError(data.error, data.error.toLowerCase().includes("postal"));
         else            renderResult(data);
       } catch (e) {
-        renderError("Kon de server niet bereiken. Is de server actief?");
+        renderError(LANGS[lang].serverErr);
       } finally {
         setLoading(false);
       }
@@ -637,39 +780,42 @@
 
     function setLoading(on) {
       trackBtn.disabled = on;
-      trackBtn.innerHTML = on
-        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      if (on) {
+        trackBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                style="animation:spin .8s linear infinite">
              <path stroke-linecap="round" d="M12 2a10 10 0 0 1 10 10"/>
-           </svg> Bezig…`
-        : `Zoeken <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5-5 5M6 12h12"/>
-           </svg>`;
-      if (on) results.innerHTML = skeletonHTML();
+           </svg> ${LANGS[lang].loading}`;
+        results.innerHTML = skeletonHTML();
+      } else {
+        trackBtn.innerHTML = `<span id="trackBtnLabel">${LANGS[lang].searchBtn}</span>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5-5 5M6 12h12"/>
+          </svg>`;
+      }
     }
 
     // ── Renderers ────────────────────────────────────────────────
     function renderError(msg, needsPostal = false) {
-      const hint = needsPostal
-        ? "<br><strong>Tip:</strong> Voeg een postcode toe voor dit pakkettype."
-        : "";
+      const L = LANGS[lang];
+      const hint = needsPostal ? `<br>${L.postalTip}` : "";
       results.innerHTML = `
         <div class="error-card fade-up">
           <div class="error-icon">⚠️</div>
           <div>
-            <div class="error-title">Opzoeken mislukt</div>
+            <div class="error-title">${L.errorTitle}</div>
             <div class="error-body">${escHtml(msg)}${hint}</div>
           </div>
         </div>`;
     }
 
     function renderResult(d) {
-      const latest  = d.latest_event;
-      const sm      = STATUS_META[latest.status_code] ?? STATUS_META.TRANSIT;
-      const cm      = COURIER_META[d.courier] ?? { name: d.courier, icon: "📦", color: "#4F8EF7" };
-      const ts      = fmtDate(latest.timestamp);
+      const L      = LANGS[lang];
+      const latest = d.latest_event;
+      const sm     = STATUS_META[latest.status_code] ?? STATUS_META.TRANSIT;
+      const slabel = L.status[latest.status_code] ?? latest.status_code;
+      const cm     = COURIER_META[d.courier] ?? { name: d.courier, icon: "📦", color: "#4F8EF7" };
+      const ts     = fmtDate(latest.timestamp);
 
-      // Hero
       const heroHTML = `
         <div class="hero-card fade-up">
           <div class="hero-bar" style="background:${sm.color}"></div>
@@ -680,10 +826,10 @@
               <div class="hero-tracking">${escHtml(d.tracking_number)}</div>
               <div>
                 <span class="status-pill" style="background:${sm.color}">
-                  ${sm.icon} ${sm.label}
+                  ${sm.icon} ${slabel}
                 </span>
               </div>
-              <div class="hero-desc">${escHtml(latest.description || sm.label)}</div>
+              <div class="hero-desc">${escHtml(latest.description || slabel)}</div>
               <div class="hero-sub">
                 <span class="hero-sub-item">
                   <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -706,13 +852,13 @@
           </div>
         </div>`;
 
-      // Timeline (newest first)
-      const events   = [...d.history].reverse();
-      const tlHTML   = events.map((ev, i) => {
-        const s    = STATUS_META[ev.status_code] ?? STATUS_META.TRANSIT;
-        const isA  = i === 0;
-        const ts   = fmtDate(ev.timestamp);
+      const events = [...d.history].reverse();
+      const tlHTML = events.map((ev, i) => {
+        const s      = STATUS_META[ev.status_code] ?? STATUS_META.TRANSIT;
+        const slbl   = L.status[ev.status_code] ?? ev.status_code;
+        const isA    = i === 0;
         const isLast = i === events.length - 1;
+        const ets    = fmtDate(ev.timestamp);
         return `
           <div class="tl-item" style="animation-delay:${i * 50}ms">
             <div class="tl-spine">
@@ -725,10 +871,10 @@
             <div class="tl-card ${isA ? "active" : ""}"
                  style="${isA ? `--status-color:${s.color}` : ""}">
               <div class="tl-header">
-                <div class="tl-ts">${ts}</div>
-                <div class="tl-badge" style="${isA ? `--status-color:${s.color}` : ""}">${s.label}</div>
+                <div class="tl-ts">${ets}</div>
+                <div class="tl-badge" style="${isA ? `--status-color:${s.color}` : ""}">${slbl}</div>
               </div>
-              <div class="tl-desc">${escHtml(ev.description || s.label)}</div>
+              <div class="tl-desc">${escHtml(ev.description || slbl)}</div>
               ${ev.location ? `
               <div class="tl-loc">
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -743,7 +889,7 @@
       }).join("");
 
       results.innerHTML = heroHTML
-        + `<div class="section-title">Geschiedenis — ${events.length} event${events.length !== 1 ? "s" : ""}</div>`
+        + `<div class="section-title">${L.history(events.length)}</div>`
         + `<div class="timeline">${tlHTML}</div>`;
     }
 
@@ -754,8 +900,7 @@
     }
 
     function fmtDate(iso) {
-      const d = new Date(iso);
-      return d.toLocaleString("nl-BE", {
+      return new Date(iso).toLocaleString(LANGS[lang].locale, {
         day: "2-digit", month: "short", year: "numeric",
         hour: "2-digit", minute: "2-digit",
       });
@@ -769,11 +914,10 @@
 
     function shake(el) {
       el.style.animation = "none";
-      el.offsetHeight; // reflow
+      el.offsetHeight;
       el.style.animation = "shake .3s ease";
     }
 
-    /* Extra animations */
     const style = document.createElement("style");
     style.textContent = `
       @keyframes spin  { to { transform: rotate(360deg); } }
