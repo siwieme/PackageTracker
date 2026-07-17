@@ -454,6 +454,36 @@
     .empty-title { font-weight: 600; color: var(--text); margin-bottom: 6px; }
     .empty-sub { font-size: 14px; }
 
+    /* ── Courier picker ──────────────────────────────────────────── */
+    .courier-picker {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .courier-opt {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: var(--surface-2);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .courier-opt:hover { border-color: var(--accent); color: var(--text); }
+    .courier-opt.selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
     /* ── Responsive ──────────────────────────────────────────────── */
     @media (max-width: 480px) {
       .row { flex-direction: column; gap: 14px; }
@@ -487,6 +517,15 @@
                  placeholder="bijv. 323204736100000008192030"
                  autocomplete="off"
                  spellcheck="false" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Vervoerder <span>(optioneel)</span></label>
+        <div class="courier-picker" id="courierPicker">
+          <button class="courier-opt selected" data-courier="">🔍 Auto-detect</button>
+          <button class="courier-opt" data-courier="bpost">📮 bpost</button>
+          <button class="courier-opt" data-courier="postnl">📦 PostNL</button>
+          <button class="courier-opt" data-courier="dhl">📫 DHL</button>
         </div>
       </div>
       <div class="row">
@@ -560,6 +599,16 @@
     const posIn    = document.getElementById("postalInput");
     const trackBtn = document.getElementById("trackBtn");
     const results  = document.getElementById("results");
+    const courierPicker = document.getElementById("courierPicker");
+    let selectedCourier = "";
+
+    courierPicker.addEventListener("click", e => {
+      const btn = e.target.closest(".courier-opt");
+      if (!btn) return;
+      courierPicker.querySelectorAll(".courier-opt").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedCourier = btn.dataset.courier;
+    });
 
     numIn.addEventListener("keydown",  e => e.key === "Enter" && doTrack());
     posIn.addEventListener("keydown",  e => e.key === "Enter" && doTrack());
@@ -574,6 +623,7 @@
       try {
         const params = new URLSearchParams({ tracking_number: number });
         if (postal) params.set("postal_code", postal);
+        if (selectedCourier) params.set("courier", selectedCourier);
         const res  = await fetch(`/api/track?${params}`);
         const data = await res.json();
         if (data.error) renderError(data.error, data.error.toLowerCase().includes("postal"));

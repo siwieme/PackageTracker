@@ -106,6 +106,27 @@ class CourierRouter:
         adapter_cls = self._adapter_for(name)
         return adapter_cls(**kwargs)  # type: ignore[arg-type]
 
+    def get_adapter_by_courier(
+        self, courier_name: str, **kwargs: object
+    ) -> BaseCourierAdapter:
+        """Return an adapter for an explicitly named courier.
+
+        Args:
+            courier_name: One of the registered courier identifiers (e.g. "bpost").
+            **kwargs: Forwarded to the adapter constructor.
+
+        Raises:
+            ValueError: If the courier name is not registered.
+        """
+        try:
+            adapter_cls = self._adapter_for(courier_name.lower())
+        except KeyError:
+            valid = ", ".join(name for name, _, _ in self._registry)
+            raise ValueError(
+                f"Onbekende vervoerder '{courier_name}'. Geldige opties: {valid}"
+            )
+        return adapter_cls(**kwargs)  # type: ignore[arg-type]
+
     def _adapter_for(self, courier_name: str) -> Type[BaseCourierAdapter]:
         """Return the adapter class registered for a courier name.
 

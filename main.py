@@ -29,23 +29,30 @@ from core.router import CourierRouter
 async def track(
     tracking_number: str,
     postal_code: Optional[str] = None,
+    courier: Optional[str] = None,
 ) -> PackageStatus:
     """Detect the courier and fetch the normalized status for one parcel.
 
     Args:
         tracking_number: The tracking number to look up.
         postal_code: Optional destination postal code forwarded to the adapter.
+        courier: Force a specific courier (e.g. "bpost") instead of auto-detecting.
 
     Returns:
         The normalized :class:`~core.models.PackageStatus`.
 
     Raises:
-        ValueError: If no courier matches the tracking number.
+        ValueError: If no courier matches the tracking number, or the forced
+            courier name is unknown.
         CourierError: If the courier lookup fails.
     """
     router = CourierRouter()
-    async with router.get_adapter(tracking_number) as adapter:
-        return await adapter.fetch_tracking(tracking_number, postal_code=postal_code)
+    if courier:
+        async with router.get_adapter_by_courier(courier) as adapter:
+            return await adapter.fetch_tracking(tracking_number, postal_code=postal_code)
+    else:
+        async with router.get_adapter(tracking_number) as adapter:
+            return await adapter.fetch_tracking(tracking_number, postal_code=postal_code)
 
 
 async def _run(tracking_numbers: List[str], postal_code: Optional[str]) -> int:

@@ -35,6 +35,7 @@ async def index() -> str:
 async def track_endpoint(
     tracking_number: str,
     postal_code: Optional[str] = None,
+    courier: Optional[str] = None,
 ) -> dict:
     """Detect the courier and return normalised tracking data.
 
@@ -48,7 +49,7 @@ async def track_endpoint(
     """
     try:
         status: PackageStatus = await _track(
-            tracking_number, postal_code=postal_code
+            tracking_number, postal_code=postal_code, courier=courier
         )
         return status.model_dump(mode="json")
     except (ValueError, CourierError) as exc:
@@ -58,4 +59,6 @@ async def track_endpoint(
 
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("server:app", host="127.0.0.1", port=port, reload=True)
